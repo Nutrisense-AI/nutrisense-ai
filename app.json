@@ -1,0 +1,131 @@
+{
+  "expo": {
+    "name": "NutriSense AI",
+    "slug": "nutrisense-ai",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "nutrisenseai",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/images/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0A0A0F"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.nutrisenseai.app",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSCameraUsageDescription": "NutriSense AI uses your camera to analyze food plates and scan barcodes for instant nutritional information.",
+        "NSPhotoLibraryUsageDescription": "NutriSense AI accesses your photo library to analyze saved food images for nutritional tracking.",
+        "NSPhotoLibraryAddUsageDescription": "NutriSense AI saves food analysis images to your photo library.",
+        "NSMicrophoneUsageDescription": "NutriSense AI requires microphone access for video-based food scanning.",
+        "NSFaceIDUsageDescription": "NutriSense AI uses Face ID for secure authentication.",
+        "NSHealthShareUsageDescription": "NutriSense AI reads health data to provide personalized nutrition recommendations.",
+        "NSHealthUpdateUsageDescription": "NutriSense AI writes nutrition data to Apple Health for comprehensive health tracking.",
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "config": {
+        "usesNonExemptEncryption": false
+      },
+      "entitlements": {
+        "com.apple.developer.healthkit": true,
+        "com.apple.developer.healthkit.access": []
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#0A0A0F"
+      },
+      "package": "com.nutrisenseai.app",
+      "versionCode": 5,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.VIBRATE",
+        "android.permission.FLASHLIGHT",
+        "com.android.vending.BILLING"
+      ],
+      "googleServicesFile": "./google-services.json"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png",
+      "name": "NutriSense AI",
+      "shortName": "NutriSense",
+      "description": "Your AI-powered nutrition companion. Track meals, get personalized advice, and achieve your health goals.",
+      "scope": "/",
+      "startUrl": "/",
+      "display": "standalone",
+      "orientation": "portrait-primary",
+      "backgroundColor": "#0A0A0F",
+      "themeColor": "#6C63FF",
+      "barStyle": "black-translucent",
+      "dir": "ltr",
+      "lang": "en",
+      "categories": ["health", "fitness", "productivity"],
+      "screenshots": [
+        {
+          "src": "./assets/images/screenshot1.png",
+          "sizes": "540x720",
+          "type": "image/png",
+          "form_factor": "narrow"
+        }
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "NutriSense AI uses your camera to analyze food and scan barcodes.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-barcode-scanner",
+        {
+          "cameraPermission": "NutriSense AI uses your camera to scan product barcodes."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "NutriSense AI accesses your photos to analyze food images."
+        }
+      ],
+      "expo-secure-store",
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0A0A0F",
+          "image": "./assets/images/splash.png",
+          "imageWidth": 200
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "381020a6-e604-4345-9d09-89ce7731c3ad"
+      },
+      "_note": "Project linked to @loukman-nutrisense/nutrisense-ai"
+    }
+  }
+}
