@@ -466,14 +466,15 @@ const premiumRouter = router({
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Stripe not configured" });
       }
 
+      // Use the official Stripe Price ID for the Nutrisense AI Lifetime Pass
+      const STRIPE_PRICE_ID = "price_1TYcSc6881RmKyZ1JoW4nDXG";
+
       const params = new URLSearchParams({
         "payment_method_types[]": "card",
-        "line_items[0][price_data][currency]": "usd",
-        "line_items[0][price_data][product_data][name]": "Nutrisense AI Lifetime Pass",
-        "line_items[0][price_data][product_data][description]": "Unlimited food scans, AI nutritionist chat, and full meal history — forever.",
-        "line_items[0][price_data][unit_amount]": "2900",
+        "line_items[0][price]": STRIPE_PRICE_ID,
         "line_items[0][quantity]": "1",
         mode: "payment",
+        allow_promotion_codes: "true",
         success_url: `${input.origin}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${input.origin}/`,
         "metadata[userId]": String(ctx.user.id),

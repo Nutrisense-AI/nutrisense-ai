@@ -1,9 +1,11 @@
-import { useParams, Link } from "wouter";
+import { Link, useParams } from "wouter";
 import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
-import { Loader2, ArrowLeft, Camera, MessageCircle, Flame, Beef, Wheat, Droplets, Leaf, Star } from "lucide-react";
+import { Loader2, ArrowLeft, Camera, MessageCircle, Flame, Beef, Wheat, Droplets, Leaf, Star, Share2, Download, Check } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
+import { useCallback, useRef, useState } from "react";
+import { toast } from "sonner";
 
 const MACRO_COLORS = {
   protein: "#4ade80",
@@ -30,6 +32,251 @@ function MacroBar({ label, value, max, color }: { label: string; value: number; 
   );
 }
 
+// ─── Share Card Generator ────────────────────────────────────────────────────
+async function generateShareCard(params: {
+  mealName: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fiber: number;
+  healthScore?: number;
+  imageUrl: string;
+  date: string;
+}): Promise<Blob> {
+  const W = 1080;
+  const H = 1080;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d")!;
+
+  // Background — dark gradient
+  const bgGrad = ctx.createLinearGradient(0, 0, W, H);
+  bgGrad.addColorStop(0, "#0d1117");
+  bgGrad.addColorStop(1, "#0a1a0f");
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Subtle green glow top-center
+  const glow = ctx.createRadialGradient(W / 2, 0, 0, W / 2, 0, 500);
+  glow.addColorStop(0, "rgba(74,222,128,0.12)");
+  glow.addColorStop(1, "rgba(74,222,128,0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
+
+  // Load meal image
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const i = new Image();
+      i.crossOrigin = "anonymous";
+      i.onload = () => resolve(i);
+      i.onerror = reject;
+      i.src = params.imageUrl;
+    });
+    // Draw image in top portion with rounded clip
+    const imgH = 420;
+    ctx.save();
+    roundRect(ctx, 40, 40, W - 80, imgH, 28);
+    ctx.clip();
+    // Cover-fit the image
+    const scale = Math.max((W - 80) / img.width, imgH / img.height);
+    const dw = img.width * scale;
+    const dh = img.height * scale;
+    const dx = 40 + ((W - 80) - dw) / 2;
+    const dy = 40 + (imgH - dh) / 2;
+    ctx.drawImage(img, dx, dy, dw, dh);
+    // Gradient overlay on image bottom
+    const imgOverlay = ctx.createLinearGradient(0, 40 + imgH - 120, 0, 40 + imgH);
+    imgOverlay.addColorStop(0, "rgba(13,17,23,0)");
+    imgOverlay.addColorStop(1, "rgba(13,17,23,0.9)");
+    ctx.fillStyle = imgOverlay;
+    ctx.fillRect(40, 40, W - 80, imgH);
+    ctx.restore();
+  } catch {
+    // If image fails, draw placeholder
+    ctx.fillStyle = "#1a2a1a";
+    roundRect(ctx, 40, 40, W - 80, 420, 28);
+    ctx.fill();
+  }
+
+  // Meal name on image
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 48px system-ui, -apple-system, sans-serif";
+  ctx.textAlign = "left";
+  const mealName = params.mealName.length > 32 ? params.mealName.substring(0, 30) + "…" : params.mealName;
+  ctx.fillText(mealName, 64, 430);
+
+  // Date
+  ctx.fillStyle = "rgba(255,255,255,0.55)";
+  ctx.font = "28px system-ui, -apple-system, sans-serif";
+  ctx.fillText(params.date, 64, 470);
+
+  // Health score badge (top-right of image)
+  if (params.healthScore) {
+    ctx.fillStyle = "rgba(74,222,128,0.9)";
+    roundRect(ctx, W - 200, 60, 140, 56, 28);
+    ctx.fill();
+    ctx.fillStyle = "#0d1117";
+    ctx.font = "bold 26px system-ui, -apple-system, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(`⭐ ${params.healthScore}/10`, W - 130, 95);
+  }
+
+  // Calorie hero block
+  const heroY = 510;
+  ctx.fillStyle = "rgba(74,222,128,0.08)";
+  ctx.strokeStyle = "rgba(74,222,128,0.25)";
+  ctx.lineWidth = 2;
+  roundRect(ctx, 40, heroY, W - 80, 130, 24);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#4ade80";
+  ctx.font = "bold 80px system-ui, -apple-system, sans-serif";
+  ctx.fillText(String(Math.round(params.calories)), W / 2, heroY + 90);
+  ctx.fillStyle = "rgba(255,255,255,0.55)";
+  ctx.font = "28px system-ui, -apple-system, sans-serif";
+  ctx.fillText("CALORIES", W / 2, heroY + 122);
+
+  // Macro grid — 4 boxes
+  const macroY = 670;
+  const macroW = (W - 80 - 30) / 4;
+  const macros = [
+    { label: "PROTEIN", value: params.protein, unit: "g", color: MACRO_COLORS.protein },
+    { label: "CARBS", value: params.carbs, unit: "g", color: MACRO_COLORS.carbs },
+    { label: "FAT", value: params.fat, unit: "g", color: MACRO_COLORS.fat },
+    { label: "FIBER", value: params.fiber, unit: "g", color: MACRO_COLORS.fiber },
+  ];
+  macros.forEach((m, i) => {
+    const x = 40 + i * (macroW + 10);
+    ctx.fillStyle = "rgba(255,255,255,0.05)";
+    ctx.strokeStyle = "rgba(255,255,255,0.1)";
+    ctx.lineWidth = 1.5;
+    roundRect(ctx, x, macroY, macroW, 130, 20);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = m.color;
+    ctx.font = "bold 46px system-ui, -apple-system, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(`${m.value.toFixed(0)}${m.unit}`, x + macroW / 2, macroY + 72);
+
+    ctx.fillStyle = "rgba(255,255,255,0.45)";
+    ctx.font = "22px system-ui, -apple-system, sans-serif";
+    ctx.fillText(m.label, x + macroW / 2, macroY + 108);
+  });
+
+  // Branding footer
+  ctx.fillStyle = "rgba(255,255,255,0.15)";
+  ctx.fillRect(40, 830, W - 80, 1);
+
+  ctx.textAlign = "left";
+  ctx.fillStyle = "#4ade80";
+  ctx.font = "bold 30px system-ui, -apple-system, sans-serif";
+  ctx.fillText("Nutrisense AI", 64, 890);
+  ctx.fillStyle = "rgba(255,255,255,0.35)";
+  ctx.font = "24px system-ui, -apple-system, sans-serif";
+  ctx.fillText("AI-Powered Nutrition Analysis", 64, 924);
+
+  ctx.textAlign = "right";
+  ctx.fillStyle = "rgba(255,255,255,0.25)";
+  ctx.font = "22px system-ui, -apple-system, sans-serif";
+  ctx.fillText("nutrisense.manus.space", W - 64, 924);
+
+  return new Promise((resolve) => canvas.toBlob((b) => resolve(b!), "image/png", 0.95));
+}
+
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+// ─── Share Button Component ──────────────────────────────────────────────────
+function ShareButton({ scan, healthScore }: {
+  scan: { mealName: string | null; imageUrl: string; totalCalories: number | null; totalProtein: number | null; totalCarbs: number | null; totalFat: number | null; totalFiber: number | null; createdAt: Date };
+  healthScore?: number;
+}) {
+  const [sharing, setSharing] = useState(false);
+  const [shared, setShared] = useState(false);
+
+  const handleShare = useCallback(async () => {
+    setSharing(true);
+    try {
+      const blob = await generateShareCard({
+        mealName: scan.mealName ?? "My Meal",
+        calories: scan.totalCalories ?? 0,
+        protein: scan.totalProtein ?? 0,
+        carbs: scan.totalCarbs ?? 0,
+        fat: scan.totalFat ?? 0,
+        fiber: scan.totalFiber ?? 0,
+        healthScore,
+        imageUrl: scan.imageUrl,
+        date: new Date(scan.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+      });
+
+      const file = new File([blob], "nutrisense-meal.png", { type: "image/png" });
+
+      // Try Web Share API first (mobile)
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: `${scan.mealName ?? "My Meal"} — ${Math.round(scan.totalCalories ?? 0)} kcal`,
+          text: `Just analyzed my meal with Nutrisense AI! 🥗 ${Math.round(scan.totalCalories ?? 0)} calories, ${(scan.totalProtein ?? 0).toFixed(0)}g protein`,
+        });
+        setShared(true);
+        setTimeout(() => setShared(false), 3000);
+      } else {
+        // Fallback: download the image
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `nutrisense-${(scan.mealName ?? "meal").replace(/\s+/g, "-").toLowerCase()}.png`;
+        a.click();
+        URL.revokeObjectURL(url);
+        toast.success("Meal card downloaded! Share it anywhere.");
+        setShared(true);
+        setTimeout(() => setShared(false), 3000);
+      }
+    } catch (err) {
+      if ((err as Error).name !== "AbortError") {
+        toast.error("Could not generate share card. Please try again.");
+      }
+    } finally {
+      setSharing(false);
+    }
+  }, [scan, healthScore]);
+
+  return (
+    <Button
+      onClick={handleShare}
+      disabled={sharing}
+      variant="outline"
+      className="flex-1 h-12 gap-2 border-border hover:border-primary/50"
+    >
+      {sharing ? (
+        <Loader2 className="w-4 h-4 animate-spin" />
+      ) : shared ? (
+        <Check className="w-4 h-4 text-primary" />
+      ) : (
+        <Share2 className="w-4 h-4" />
+      )}
+      {sharing ? "Generating…" : shared ? "Shared!" : "Share Results"}
+    </Button>
+  );
+}
+
+// ─── Main Results Page ───────────────────────────────────────────────────────
 export default function Results() {
   const { scanId } = useParams<{ scanId: string }>();
   const scanQuery = trpc.food.getScan.useQuery({ scanId: parseInt(scanId ?? "0") });
@@ -289,6 +536,7 @@ export default function Results() {
               <Camera className="w-4 h-4" /> Scan Another Meal
             </Button>
           </Link>
+          <ShareButton scan={scan} healthScore={analysis?.healthScore} />
           <Link href={`/chat?scanId=${scan.id}`} className="flex-1">
             <Button className="w-full h-12 gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
               <MessageCircle className="w-4 h-4" /> Ask AI Nutritionist

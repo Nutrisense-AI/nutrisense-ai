@@ -52,3 +52,8 @@
 - [x] Skeleton loading animation on scan page while AI analyzes
 - [x] Filtering and sorting on meal history page (by date, calories)
 - [x] Stripe sandbox verification: confirmed live (acct_1TYGTO6881RmKyZ1, AU, test mode), checkout sessions create successfully
+
+## New Features (Round 4)
+
+- [x] Share button on results page: generate shareable meal card image (canvas), support Web Share API + download fallback
+- [x] Wire official Stripe Price ID (price_1TYcSc6881RmKyZ1JoW4nDXG) into checkout session — verified: $29.00 USD, checkout creates successfully
