@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
 import { useSessionToken } from "@/hooks/useSessionToken";
 import { useState, useEffect } from "react";
-import { Loader2, Camera, Flame, Beef, Wheat, Droplets, Trash2, ArrowRight, Target, X } from "lucide-react";
+import { Loader2, Camera, Flame, Beef, Wheat, Droplets, Trash2, ArrowRight, Target, X, Search, SlidersHorizontal, ArrowUpDown } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
@@ -109,6 +109,11 @@ export default function History() {
   const [showGoalsModal, setShowGoalsModal] = useState(false);
   const [goalForm, setGoalForm] = useState({ calorieGoal: 2000, proteinGoal: 150, carbsGoal: 250, fatGoal: 65, fiberGoal: 25 });
 
+  // Filter & sort state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState<"date_desc" | "date_asc" | "calories_desc" | "calories_asc">("date_desc");
+  const [filterDate, setFilterDate] = useState<"all" | "today" | "week" | "month">("all");
+
   useEffect(() => {
     if (goalsQuery.data) {
       setGoalForm({
@@ -123,7 +128,41 @@ export default function History() {
 
   const goals = goalsQuery.data ?? { calorieGoal: 2000, proteinGoal: 150, carbsGoal: 250, fatGoal: 65, fiberGoal: 25 };
 
-  const scans = (historyQuery.data ?? []) as MealScan[];
+  const allScans = (historyQuery.data ?? []) as MealScan[];
+
+  // Apply search filter
+  const searchFiltered = allScans.filter((s) => {
+    if (!searchQuery.trim()) return true;
+    return (s.mealName ?? "").toLowerCase().includes(searchQuery.toLowerCase());
+  });
+
+  // Apply date filter
+  const now = new Date();
+  const dateFiltered = searchFiltered.filter((s) => {
+    const d = new Date(s.createdAt);
+    if (filterDate === "today") {
+      const t = new Date(); t.setHours(0,0,0,0);
+      return d >= t;
+    }
+    if (filterDate === "week") {
+      const w = new Date(); w.setDate(w.getDate() - 7);
+      return d >= w;
+    }
+    if (filterDate === "month") {
+      const m = new Date(); m.setMonth(m.getMonth() - 1);
+      return d >= m;
+    }
+    return true;
+  });
+
+  // Apply sort
+  const scans = [...dateFiltered].sort((a, b) => {
+    if (sortBy === "date_desc") return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    if (sortBy === "date_asc") return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    if (sortBy === "calories_desc") return (b.totalCalories ?? 0) - (a.totalCalories ?? 0);
+    if (sortBy === "calories_asc") return (a.totalCalories ?? 0) - (b.totalCalories ?? 0);
+    return 0;
+  });
 
   // Daily totals
   const today = new Date();
@@ -248,12 +287,64 @@ export default function History() {
           </div>
         )}
 
+        {/* Filter & Sort Controls */}
+        {allScans.length > 0 && (
+          <div className="flex flex-col sm:flex-row gap-3 mb-6">
+            {/* Search */}
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search meals..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full h-10 pl-9 pr-4 bg-card border border-border rounded-xl text-sm focus:outline-none focus:border-primary/50"
+              />
+              {searchQuery && (
+                <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Date filter */}
+            <div className="flex items-center gap-1 bg-card border border-border rounded-xl p-1">
+              {(["all", "today", "week", "month"] as const).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setFilterDate(f)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors capitalize ${
+                    filterDate === f ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+
+            {/* Sort */}
+            <div className="flex items-center gap-2">
+              <ArrowUpDown className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+                className="h-10 px-3 bg-card border border-border rounded-xl text-sm focus:outline-none focus:border-primary/50 text-foreground"
+              >
+                <option value="date_desc">Newest first</option>
+                <option value="date_asc">Oldest first</option>
+                <option value="calories_desc">Most calories</option>
+                <option value="calories_asc">Fewest calories</option>
+              </select>
+            </div>
+          </div>
+        )}
+
         {/* Meal grid */}
         {historyQuery.isLoading ? (
           <div className="flex justify-center py-20">
             <Loader2 className="w-8 h-8 text-primary animate-spin" />
           </div>
-        ) : scans.length === 0 ? (
+        ) : allScans.length === 0 ? (
           <div className="text-center py-20">
             <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
               <Camera className="w-8 h-8 text-primary" />
@@ -265,6 +356,17 @@ export default function History() {
                 <Camera className="w-4 h-4" /> Scan Your First Meal
               </Button>
             </Link>
+          </div>
+        ) : scans.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="w-14 h-14 bg-muted rounded-2xl flex items-center justify-center mx-auto mb-3">
+              <Search className="w-7 h-7 text-muted-foreground" />
+            </div>
+            <h3 className="text-lg font-bold mb-1">No results found</h3>
+            <p className="text-muted-foreground text-sm mb-4">Try adjusting your search or filters.</p>
+            <Button variant="outline" size="sm" onClick={() => { setSearchQuery(""); setFilterDate("all"); }}>
+              Clear filters
+            </Button>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">

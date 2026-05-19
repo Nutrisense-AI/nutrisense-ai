@@ -45,3 +45,10 @@
 - [x] Progress bars on history dashboard: show today's intake vs daily goals
 - [x] GitHub deployment: push code to GitHub and generate public link
 - [x] Stripe sandbox: keys auto-configured via webdev_add_feature (user must claim sandbox manually)
+
+## New Features (Round 3)
+
+- [x] Barcode scanner: scan packaged food barcodes using Open Food Facts API
+- [x] Skeleton loading animation on scan page while AI analyzes
+- [x] Filtering and sorting on meal history page (by date, calories)
+- [x] Stripe sandbox verification: confirmed live (acct_1TYGTO6881RmKyZ1, AU, test mode), checkout sessions create successfully

@@ -3,23 +3,81 @@ import { useLocation } from "wouter";
 import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { PaywallModal } from "@/components/PaywallModal";
+import { BarcodeScanner, type FoodProduct } from "@/components/BarcodeScanner";
 import { trpc } from "@/lib/trpc";
 import { useSessionToken } from "@/hooks/useSessionToken";
 import { toast } from "sonner";
-import { Camera, Upload, X, Loader2, Zap, AlertCircle } from "lucide-react";
+import { Camera, Upload, X, Loader2, Zap, AlertCircle, Barcode, Utensils, BarChart3, Leaf } from "lucide-react";
+
+// ─── Skeleton loading animation while AI analyzes ─────────────────────────────
+function AnalysisSkeleton() {
+  return (
+    <div className="mt-8 space-y-4 animate-pulse">
+      <div className="bg-card border border-border rounded-2xl p-5">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 bg-primary/20 rounded-xl" />
+          <div className="flex-1 space-y-2">
+            <div className="h-4 bg-muted rounded w-1/2" />
+            <div className="h-3 bg-muted rounded w-1/3" />
+          </div>
+        </div>
+        <div className="grid grid-cols-4 gap-3">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="bg-muted rounded-xl p-3 text-center">
+              <div className="h-6 bg-muted-foreground/20 rounded mb-1 mx-auto w-10" />
+              <div className="h-3 bg-muted-foreground/20 rounded w-full" />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-card border border-border rounded-2xl p-5">
+        <div className="h-4 bg-muted rounded w-1/3 mb-3" />
+        <div className="space-y-2">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-muted rounded-lg flex-shrink-0" />
+              <div className="flex-1 space-y-1">
+                <div className="h-3 bg-muted rounded w-2/3" />
+                <div className="h-3 bg-muted rounded w-1/3" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-card border border-border rounded-2xl p-5">
+        <div className="h-4 bg-muted rounded w-1/4 mb-3" />
+        <div className="space-y-2">
+          <div className="h-3 bg-muted rounded w-full" />
+          <div className="h-3 bg-muted rounded w-5/6" />
+          <div className="h-3 bg-muted rounded w-4/6" />
+        </div>
+      </div>
+
+      {/* Progress indicator */}
+      <div className="flex items-center justify-center gap-3 py-2">
+        <Loader2 className="w-5 h-5 text-primary animate-spin" />
+        <div className="text-sm text-muted-foreground">
+          <span className="text-primary font-semibold">AI is analyzing</span> — identifying foods and calculating nutrition...
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function Scan() {
   const [, navigate] = useLocation();
   const sessionToken = useSessionToken();
   const [preview, setPreview] = useState<string | null>(null);
   const [showPaywall, setShowPaywall] = useState(false);
+  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  // Only query usage once we have a session token (avoids empty-string query)
   const usageQuery = trpc.food.checkUsage.useQuery(
     { sessionToken: sessionToken || undefined },
     { enabled: true }
@@ -36,6 +94,16 @@ export default function Scan() {
       } else {
         toast.error("Analysis failed: " + err.message);
       }
+    },
+  });
+
+  const logBarcodeMutation = trpc.food.logBarcodeScan.useMutation({
+    onSuccess: (data) => {
+      toast.success(`"${data.mealName}" added to your meal log!`);
+      navigate(`/results/${data.scanId}`);
+    },
+    onError: (err) => {
+      toast.error("Failed to log product: " + err.message);
     },
   });
 
@@ -123,17 +191,40 @@ export default function Scan() {
     analyzeMutation.mutate({ imageBase64: preview, sessionToken: sessionToken || undefined });
   };
 
+  const handleBarcodeProduct = (product: FoodProduct, barcode: string) => {
+    setShowBarcodeScanner(false);
+    logBarcodeMutation.mutate({
+      sessionToken: sessionToken || undefined,
+      productName: product.name,
+      brand: product.brand || undefined,
+      barcode,
+      calories: product.calories,
+      protein: product.protein,
+      carbs: product.carbs,
+      fat: product.fat,
+      fiber: product.fiber,
+      servingSize: product.servingSize,
+      imageUrl: product.imageUrl,
+    });
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Navbar />
       <PaywallModal open={showPaywall} onClose={() => setShowPaywall(false)} />
+      {showBarcodeScanner && (
+        <BarcodeScanner
+          onProductFound={handleBarcodeProduct}
+          onClose={() => setShowBarcodeScanner(false)}
+        />
+      )}
 
       <div className="container max-w-2xl py-10">
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold mb-2">Scan Your Meal</h1>
           <p className="text-muted-foreground">
-            Take a photo or upload an image to get instant nutrition analysis
+            Take a photo, upload an image, or scan a barcode for instant nutrition analysis
           </p>
         </div>
 
@@ -176,7 +267,7 @@ export default function Scan() {
         )}
 
         {/* Upload area */}
-        {!preview && !cameraActive && (
+        {!preview && !cameraActive && !isAnalyzing && (
           <div
             onDrop={handleDrop}
             onDragOver={(e) => e.preventDefault()}
@@ -200,17 +291,27 @@ export default function Scan() {
         )}
 
         {/* Action buttons */}
-        {!cameraActive && (
+        {!cameraActive && !isAnalyzing && (
           <div className="flex flex-col sm:flex-row gap-3">
             {!preview && (
-              <Button
-                onClick={startCamera}
-                variant="outline"
-                className="flex-1 h-12 gap-2 border-border hover:border-primary/50"
-              >
-                <Camera className="w-5 h-5" />
-                Use Camera
-              </Button>
+              <>
+                <Button
+                  onClick={startCamera}
+                  variant="outline"
+                  className="flex-1 h-12 gap-2 border-border hover:border-primary/50"
+                >
+                  <Camera className="w-5 h-5" />
+                  Camera
+                </Button>
+                <Button
+                  onClick={() => setShowBarcodeScanner(true)}
+                  variant="outline"
+                  className="flex-1 h-12 gap-2 border-border hover:border-primary/50"
+                >
+                  <Barcode className="w-5 h-5" />
+                  Scan Barcode
+                </Button>
+              </>
             )}
             {preview && (
               <>
@@ -227,34 +328,33 @@ export default function Scan() {
                   disabled={isAnalyzing}
                   className="flex-1 h-12 gap-2 bg-primary text-primary-foreground hover:bg-primary/90 font-bold glow-green"
                 >
-                  {isAnalyzing ? (
-                    <>
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      Analyzing...
-                    </>
-                  ) : (
-                    <>
-                      <Zap className="w-5 h-5" />
-                      Analyze Nutrition
-                    </>
-                  )}
+                  <Zap className="w-5 h-5" />
+                  Analyze Nutrition
                 </Button>
               </>
             )}
           </div>
         )}
 
-        {isAnalyzing && (
-          <div className="mt-8 text-center">
-            <div className="inline-flex items-center gap-3 bg-card border border-border rounded-2xl px-6 py-4">
-              <Loader2 className="w-6 h-6 text-primary animate-spin" />
-              <div className="text-left">
-                <p className="font-semibold text-sm">AI is analyzing your meal...</p>
-                <p className="text-xs text-muted-foreground">Identifying foods and calculating nutrition</p>
+        {/* Scan method info cards */}
+        {!preview && !cameraActive && !isAnalyzing && (
+          <div className="grid grid-cols-3 gap-3 mt-6">
+            {[
+              { icon: Camera, title: "Photo", desc: "Snap or upload any meal" },
+              { icon: Barcode, title: "Barcode", desc: "Scan packaged foods" },
+              { icon: Utensils, title: "AI Analysis", desc: "Full macro breakdown" },
+            ].map((item, i) => (
+              <div key={i} className="bg-card border border-border rounded-xl p-3 text-center">
+                <item.icon className="w-5 h-5 text-primary mx-auto mb-1.5" />
+                <p className="text-xs font-semibold">{item.title}</p>
+                <p className="text-xs text-muted-foreground">{item.desc}</p>
               </div>
-            </div>
+            ))}
           </div>
         )}
+
+        {/* Skeleton loading while AI analyzes */}
+        {isAnalyzing && <AnalysisSkeleton />}
       </div>
     </div>
   );

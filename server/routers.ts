@@ -240,6 +240,85 @@ Return ONLY valid JSON in this exact format:
       return [];
     }),
 
+  // Log a barcode-scanned product as a meal entry
+  logBarcodeScan: publicProcedure
+    .input(
+      z.object({
+        sessionToken: z.string().optional(),
+        productName: z.string(),
+        brand: z.string().optional(),
+        barcode: z.string(),
+        calories: z.number(),
+        protein: z.number(),
+        carbs: z.number(),
+        fat: z.number(),
+        fiber: z.number(),
+        servingSize: z.string().optional(),
+        imageUrl: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const mealName = input.brand
+        ? `${input.productName} (${input.brand})`
+        : input.productName;
+
+      const scanId = await createMealScan({
+        userId: ctx.user?.id,
+        sessionToken: input.sessionToken,
+        imageUrl: input.imageUrl ?? "",
+        imageKey: `barcode/${input.barcode}`,
+        mealName,
+        totalCalories: input.calories,
+        totalProtein: input.protein,
+        totalCarbs: input.carbs,
+        totalFat: input.fat,
+        totalFiber: input.fiber,
+        analysisJson: {
+          mealName,
+          totalCalories: input.calories,
+          totalProtein: input.protein,
+          totalCarbs: input.carbs,
+          totalFat: input.fat,
+          totalFiber: input.fiber,
+          healthScore: 5,
+          items: [
+            {
+              name: input.productName,
+              quantity: input.servingSize ?? "1 serving",
+              calories: input.calories,
+              protein: input.protein,
+              carbs: input.carbs,
+              fat: input.fat,
+              fiber: input.fiber,
+            },
+          ],
+          insights: `Scanned from barcode ${input.barcode}.`,
+          suggestions: [],
+          isRawFood: false,
+          cookingRecipes: [],
+        },
+      });
+
+      await createMealItems([
+        {
+          scanId,
+          name: input.productName,
+          quantity: input.servingSize ?? "1 serving",
+          calories: input.calories,
+          protein: input.protein,
+          carbs: input.carbs,
+          fat: input.fat,
+          fiber: input.fiber,
+        },
+      ]);
+
+      if (!ctx.user && input.sessionToken) {
+        await incrementAnonymousScanCount(input.sessionToken);
+      }
+
+      return { scanId, mealName };
+    }),
+
   // Delete a scan
   deleteScan: protectedProcedure
     .input(z.object({ scanId: z.number() }))
